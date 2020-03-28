@@ -2,6 +2,7 @@
 #include "ui_frmplay.h"
 
 #include <QSvgWidget>
+#include <QMessageBox>
 
 FrmPlay::FrmPlay(QString vdemFilename, QWidget *parent) :
     SaeDialog(parent),
@@ -23,6 +24,22 @@ FrmPlay::FrmPlay(QString vdemFilename, QWidget *parent) :
     svgLoading->setFixedSize(64, 64);
     ui->layoutLoading->addWidget(svgLoading);
 
+    QTimer::singleShot(100, this, &FrmPlay::formLoaded);
+}
+
+FrmPlay::~FrmPlay()
+{
+    delete ui;
+}
+
+void FrmPlay::formLoaded()
+{
+    if(!validCsgoVersion())
+    {
+        stop();
+        return;
+    }
+
     QThread *thread = new QThread();
     VdemLoader *vdemLoader = new VdemLoader();
     vdemLoader->setMatch(match);
@@ -34,11 +51,6 @@ FrmPlay::FrmPlay(QString vdemFilename, QWidget *parent) :
     thread->start();
 }
 
-FrmPlay::~FrmPlay()
-{
-    delete ui;
-}
-
 void FrmPlay::showLoadingScreen()
 {
     ui->stackedWidget->setCurrentIndex(1);
@@ -47,6 +59,49 @@ void FrmPlay::showLoadingScreen()
 void FrmPlay::hideLoadingScreen()
 {
     ui->stackedWidget->setCurrentIndex(0);
+}
+
+QString FrmPlay::fileChecksum(const QString &fileName, QCryptographicHash::Algorithm hashAlgorithm)
+{
+    QFile f(fileName);
+    if (f.open(QFile::ReadOnly)) {
+        QCryptographicHash hash(hashAlgorithm);
+        if (hash.addData(&f)) {
+            return hash.result().toBase64();
+        }
+    }
+    return "";
+}
+
+bool FrmPlay::validCsgoVersion()
+{
+    bool valid = true;
+    QString csgoFilename = Settings::getCsgoFilename();
+    QString engineFilename = Settings::getCsgoFilename().section("/",0,-2) + "/bin/engine.dll";
+
+    QString currentCsgoChecksum=fileChecksum(csgoFilename);
+    QString currentEngineChecksum=fileChecksum(engineFilename);
+
+    if(currentCsgoChecksum!=this->csgoChecksum)
+        valid = false;
+    if(currentEngineChecksum!=this->engineChecksum)
+        valid = false;
+
+    qDebug() << "currentCsgoChecksum" << currentCsgoChecksum;
+    qDebug() << "currentEngineChecksum" << currentEngineChecksum;
+
+    if(!valid)
+    {
+        int ret = QMessageBox::warning(this,
+                                       "Warning",
+                                       "Version difference between CS:GO and Demovoice!\n"
+                                       "This can lead to errors.\n"
+                                       "Do you want to continue?",
+                                       QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+        if(ret==QMessageBox::Yes)
+            return true;
+    }
+    return valid;
 }
 
 void FrmPlay::start()
@@ -63,13 +118,13 @@ void FrmPlay::start()
     process.start(csgoFilename, arguments);
     timer.start(50);
     mediaPlayer.setMedia(QUrl::fromLocalFile(match.audioFilename));
-
 }
 
 void FrmPlay::stop()
 {
     timer.stop();
     mediaPlayer.stop();
+    mediaPlayer.setMedia(QUrl());
 
     process.kill();
     process.waitForFinished(1000);
@@ -109,6 +164,8 @@ void FrmPlay::sync()
     if(process.state() != QProcess::Running)
     {
         status = Status::ProcessStopped;
+        mediaPlayer.stop();
+        mediaPlayer.setPosition(0);
     }
     else if(gameTick==lastTick)
     {

@@ -12,6 +12,7 @@
 #include <QTimer>
 #include <QProcess>
 #include <QMediaPlayer>
+#include <QCryptographicHash>
 
 namespace Ui {
 class FrmPlay;
@@ -33,11 +34,18 @@ private:
     MemoryReader memoryReader;
     QMediaPlayer mediaPlayer;
     int lastTick;
-    static const uintptr_t csgoTickOffset = 0x65E36C;
+
+    QString csgoChecksum = "kVun5R5ihLu/kpA8Gp4Myg==";
+    QString engineChecksum = "enRg6mwnpRPSm7SZgFa8+g==";
+    static const uintptr_t csgoTickOffset = 0x65E2EC;
 
 private slots:
+    void formLoaded();
     void showLoadingScreen();
     void hideLoadingScreen();
+
+    QString fileChecksum(const QString &fileName, QCryptographicHash::Algorithm hashAlgorithm = QCryptographicHash::Md5);
+    bool validCsgoVersion();
 
     void start();
     void stop();
